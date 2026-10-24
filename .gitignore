@@ -58,3 +58,13 @@ media
 # OS
 .DS_Store
 Thumbs.db
+
+# Virtual environments
+.venv/
+venv/
+
+# Frontend build output
+/pythonmodel/job-portal-frontend/dist/
+
+# Local datasets with computed columns (optional to ignore)
+# pythonmodel/Job_listings.csv

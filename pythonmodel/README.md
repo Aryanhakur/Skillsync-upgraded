@@ -1,95 +1,90 @@
-# Skill Sync - Job Matching Platform
+# SkillSync - Job Matching Platform
 
 A platform that extracts skills from resumes and matches them with real-time job listings.
 
 ## Features
 
-- Resume skill extraction
-- Real-time job matching using RapidAPI
-- Recommended skills based on job market trends
-- Certification recommendations
-- User authentication and history tracking
+- Resume skill extraction (PDF **and DOCX**) via a custom spaCy NER model (`output2/`)
+- Job matching with TF-IDF + cosine similarity (local dataset + live RapidAPI jobs)
+- Recommended skills based on job market demand
+- Certification recommendations (Coursera scraping with a curated offline fallback)
+- **Company skill trend analysis** — see which skills a target company demands most and which you're missing
+- **Job match report** — paste a job description (or posting URL) for an ATS-style coverage score
+- User authentication (JWT) with saved jobs, skills history and search history
 
-## Setup Instructions
+## API Endpoints
 
-### Backend Setup
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/extract-skills/` | POST (multipart `resume`) | Extract skills from an uploaded PDF/DOCX |
+| `/api/recommended-jobs/` | POST `{skills, limit?}` | Rank local dataset jobs by similarity |
+| `/api/recommended-skills/` | POST `{skills, skill_count?}` | In-demand skills the user is missing |
+| `/api/proxy-jobs/` | POST `{skills, location?, page?, remoteOnly?}` | Live RapidAPI jobs (server-side key) with dataset fallback |
+| `/api/company-trends/` | POST `{company, role?, skills?}` | Company-specific skill demand analysis |
+| `/api/match-report/` | POST `{skills, job_description? \| job_url?}` | ATS-style match report for one job |
+| `/api/certifications/` | GET `?specialization=` | Coursera certification suggestions |
+| `/api/job-links/` | POST `{jobs: [ids]}` | Apply links for job IDs |
+| `/auth/...` | various | Register, login/refresh, profile, saved jobs, history |
 
-1. Install Python dependencies:
-   ```bash
-   cd pythonmodel
-   pip install -r requirements.txt
-   ```
+## Setup
 
-2. Configure environment variables:
-   - Copy the `.env.example` file to `.env`
-   - Update the API keys and other settings as needed
+### Backend
 
-3. Run migrations:
-   ```bash
-   python manage.py migrate
-   ```
+```bash
+cd pythonmodel
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env             # then edit .env (see below)
+python manage.py migrate
+python manage.py runserver       # http://localhost:8000
+```
 
-4. Start the Django server:
-   ```bash
-   python manage.py runserver
-   ```
+Note: the spaCy NER model requires **spacy >=3.8.4,<3.9.0** (pinned in requirements.txt).
 
-### Frontend Setup
+### Frontend
 
-1. Install Node.js dependencies:
-   ```bash
-   cd job-portal-frontend
-   npm install
-   ```
+```bash
+cd pythonmodel/job-portal-frontend
+npm install
+npm start                        # dev server on http://localhost:4200
+```
 
-2. Start the Angular development server:
-   ```bash
-   ng serve
-   ```
+Production build + static serving:
 
-## Environment Variables
+```bash
+npm run build                    # static SPA into dist/
+npm run serve:spa                # serves the SPA with history fallback
+```
 
-The application uses environment variables for configuration and API keys. These are stored in:
+The frontend is a static SPA (no SSR). All external APIs are called through the
+Django backend, so no API keys exist in frontend code.
 
-- Backend: `.env` file in the project root
-- Frontend: `environment.ts` and `environment.prod.ts` files
+### Tests
 
-### Important Environment Variables
+```bash
+cd pythonmodel
+python manage.py test job_matcher   # 23 engine + API tests
+```
 
-- `RAPIDAPI_KEY`: Your RapidAPI key for job fetching
-- `RAPIDAPI_HOST`: The RapidAPI host (default: jobs-api14.p.rapidapi.com)
-- `FINDWORK_API_KEY`: Your FindWork API key (if used)
-- `SECRET_KEY`: Django secret key
-- `DEBUG`: Set to 'True' for development, 'False' for production
+## Environment Variables (backend `.env`)
 
-## API Usage Monitoring
+- `SECRET_KEY` — Django secret key (generate one; required when `DEBUG=False`)
+- `DEBUG` — `True` for development, `False` for production
+- `RAPIDAPI_KEY` — your RapidAPI key for jobs-api14 (optional: without it the app
+  falls back to TF-IDF matching over `Job_listings.csv`)
+- `RAPIDAPI_HOST` — default `jobs-api14.p.rapidapi.com`
+- `ALLOWED_HOSTS` — comma-separated, required when `DEBUG=False`
+- `CORS_ALLOWED_ORIGINS` — comma-separated frontend origins, required when `DEBUG=False`
 
-The application includes API usage monitoring to help track and manage API calls:
+## Data
 
-- Frontend: Tracks API calls in localStorage
-- Backend: Logs API calls to the console
+`Job_listings.csv` holds the local job dataset. A `Skills` column is
+auto-computed with the NER model on first load and persisted back to the CSV;
+subsequent loads are fast. Delete the column (or the file) to recompute.
 
-## Caching
+## Security Notes
 
-To reduce API calls and improve performance, the application implements caching:
-
-- Job search results are cached for 1 hour by default
-- Fallback job results are cached for 2 hours
-- Cache duration can be configured in the environment settings
-
-## Security Best Practices
-
-- API keys are stored in environment variables, not hardcoded
-- Sensitive data is not exposed to the frontend
-- Authentication is required for sensitive operations
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+- API keys live only in backend environment variables — never in code or git
+- `.env` is gitignored; use `.env.example` as the template
+- Job-URL fetching in the match report blocks private/internal hosts (SSRF guard)
